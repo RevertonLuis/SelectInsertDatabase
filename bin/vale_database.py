@@ -7,6 +7,14 @@ dir_root = os.path.abspath(
     os.path.dirname(os.path.realpath(__file__)) + '/../') + '/'
 sys.path.insert(0, dir_root)
 
+try:
+    import lib.load_settings
+except ImportError:
+    print("")
+    print("Warning: sothing wrong with the project library, can't proceed")
+    print("")
+    sys.exit()
+
 # Global sql
 sql_c = """select housourceid, houruntime, houdatetime,
            houlocationid, houvalue, houupdated
@@ -25,25 +33,32 @@ sql_run = """select houruntime
 
 # Script that will insert the date form model run
 command = ("/opt/miniconda3/envs/model_env/bin/python "
-           "/discolocal/pcj_database/bin/pcj_load_insert_model_database.py "
-           "-client 5 "
-           "-forecast_hours 180 "
-           "-model_url "
-           "http://www.simepar.br/thredds/dodsC/"
-           "modelos/simepar/wrf/SSE/9km/raw/"
-           "%Y/%m/%d/%H/SSE9km.op02_wrfout_%Y-%m-%d_%H.nc")
+           "/discolocal/vale_thredds/bin/load_insert_vale_data.py "
+           "-model_run %Y%m%d%H")
 
 
-def load_pcj_boundaries():
+def load_vale_points():
 
-    """ Load the boundaries for the client code """
+    """ Method that loads the Vale points from the database"""
 
     db_connection = psycopg2.connect("dbname='' "
                                      "user='' "
                                      "host='' "
                                      "password=''")
-    sql = ("select locationid, locationname from customerlocation "
-           "where customid=%i" % (5))
+
+    # old
+    # sql = ("select locid, locname, loclat, loclon "
+    #       "from location "
+    #       "where locmonitorid is not null")
+
+    # New (there are new points in locmonitorid)
+    sql = ("select locid, locname, loclat, loclon, locationgrouping "
+           "from "
+           "locationgrouping, "
+           "location "
+           "where "
+           "lcggrouping=4 and "
+           "locid=lcglocationid")
 
     cursor = db_connection.cursor()
     cursor.execute(sql)
@@ -51,23 +66,21 @@ def load_pcj_boundaries():
     response = cursor.fetchall()
     db_connection.close()
 
-    boundaries = []
-    for b in response:
-
-        boundaries.append(int(b[0]))
-
-    return boundaries
+    points = []
+    for p in response:
+        points.append(int(p[0]))
+    return points
 
 
-def check_last_inserted_data(date_ref):
+def check_last_inserted_data(st, date_ref):
 
     """ Routine that check tha last inserted data """
 
-    # The pcj boundaries
-    boundaries = load_pcj_boundaries()
+    # The vale points
+    points = load_vale_points()
 
     # Dictionary with the models run inserted into database
-    # for the models and boundaries
+    # for the models and points
     inserted_dates = []
 
     db_connection = psycopg2.connect("dbname='' "
@@ -76,24 +89,27 @@ def check_last_inserted_data(date_ref):
                                      "password=''")
     cursor = db_connection.cursor()
 
-    for b in boundaries:
+    for model in st["models"]:
 
-        sql = sql_run % (9, b)
-        cursor.execute(sql)
+        for p in points:
 
-        response = cursor.fetchall()
+            sql = sql_run % (int(st[model + "_source"][0]),
+                             p)
+            cursor.execute(sql)
 
-        if len(response) > 0:
-            for r in response:
-                date = datetime.datetime(r[0].year,
-                                         r[0].month,
-                                         r[0].day,
-                                         r[0].hour)
-                # if date >= date_ref then date
-                # can only be today + (00, 06, 12 or 18)
-                if date >= date_ref:
-                    if date not in inserted_dates:
-                        inserted_dates.append(date)
+            response = cursor.fetchall()
+
+            if len(response) > 0:
+                for r in response:
+                    date = datetime.datetime(r[0].year,
+                                             r[0].month,
+                                             r[0].day,
+                                             r[0].hour)
+                    # if date >= date_ref then date
+                    # can only be today + (00, 06, 12 or 18)
+                    if date >= date_ref:
+                        if date not in inserted_dates:
+                            inserted_dates.append(date)
 
     cursor.close()
     db_connection.close()
@@ -119,8 +135,12 @@ def insert_data(inserted_dates, date_ref):
 
 if __name__ == '__main__':
 
+    # Loading the project settings
+    st = lib.load_settings.load_settings(
+        dir_root + "metadata/settings.txt")
+
     # This will work in the following way:
-    # 1) For hourly data
+    # 1) For each model (Vale1km and Vale5km)
     # 2) Retrieve the inserted model runs from the database
     # 3) For each run (00, 06, 12, 18) of the
     # atual day (datetime.datetime.now())
@@ -132,7 +152,7 @@ if __name__ == '__main__':
     # Reference date
     date_ref = datetime.datetime.now().replace(hour=0, minute=0,
                                                second=0, microsecond=0)
-    inserted_dates = check_last_inserted_data(date_ref)
+    inserted_dates = check_last_inserted_data(st, date_ref)
 
     # Run the script that will insert the data for Vale for
     # the dates tha are not inserted yet

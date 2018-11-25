@@ -1,0 +1,46 @@
+# Models that will be loaded and inserted into database
+models Vale1km  Vale5km
+
+# the models thredds url
+Vale1km thredds_link_model_1k 
+Vale5km thredds_link_model_5k
+
+Vale1km_source 12
+Vale5km_source 11 
+
+# Variables that will be loaded
+variables  Temperature Precipitation RelativeHumidity Wind10m Wind50m
+
+# Variables description
+# RAW = will load the variable
+# POS = in this case the varibles will be used to
+# compute another variable. If the pos process
+# is not implemented then the variable will not
+# be inserted into the database
+
+# Temperature POS = change Kelvin to Celsius 
+Temperature    POS T2
+
+# Precipitation POS = 1) RAIN + RAINC and 2) Compute hourly acc
+Precipitation  POS  RAINC RAINNC
+
+# Wind10 POS = 1) Compute Wind Direction
+#              2) Compute Wind Magnitude
+#              3) Compute Wind Direction names
+Wind10m        POS  U10 V10
+
+# Wind50 POS = 1) Compute Wind Direction
+#              2) Compute Wind Magnitude
+#              3) Compute Wind Direction names
+Wind50m        POS  U V
+Wind50m_eta_level  1
+
+# Relative Humidity
+RelativeHumidity  POS   PSFC Q2 T2
+
+# Names in the database
+Temperature_db_name       temp
+Precipitation_db_name     precIntensity
+RelativeHumidity_db_name  humidity
+Wind10m_db_name           wind10m windDirection10m windDirectionId10m
+Wind50m_db_name           wind50m windDirection50m windDirectionId50m
